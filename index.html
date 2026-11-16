@@ -1,0 +1,1018 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Formiga de Langton</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Simulador interativo da Formiga de Langton (1986): duas regras simples, quase 10 mil passos de caos e, de repente, uma estrada infinita. Entenda por quê.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+  /* layout: caderno quadriculado de laboratório; simulador largo no topo, depois uma coluna de leitura de ~68ch com figuras que se alargam */
+  :root {
+    --paper: #edf1f5;
+    --paper-grid: #dde4ec;
+    --panel: #ffffff;
+    --ink: #0f1b2c;
+    --ink-soft: #4b5a6d;
+    --rule: #ccd5df;
+    --cobalt: #2445c9;
+    --cobalt-soft: #e2e8fb;
+    --ant: #ea4e1b;
+    --board: #ffffff;
+    --board-grid: #e6ebf1;
+    --cell: #0f1b2c;
+    --ph-simple: #2f6fdb;
+    --ph-chaos: #b7791f;
+    --ph-highway: #18865e;
+    --ph-rewind: #8a4fd0;
+
+    --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+    --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --f-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+    --s-1: 0.8125rem;
+    --s0: 1.0625rem;
+    --s1: 1.3rem;
+    --s2: 1.75rem;
+    --s3: clamp(2.4rem, 6vw, 4.25rem);
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #0a111b;
+      --paper-grid: #121c29;
+      --panel: #101a27;
+      --ink: #e3eaf3;
+      --ink-soft: #95a5b9;
+      --rule: #22324a;
+      --cobalt: #87a2ff;
+      --cobalt-soft: #1a2747;
+      --ant: #ff7442;
+      --board: #0d1622;
+      --board-grid: #172334;
+      --cell: #dbe5f0;
+      --ph-simple: #6f9fff;
+      --ph-chaos: #e0a84a;
+      --ph-highway: #43c491;
+      --ph-rewind: #b48cf0;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #0a111b;
+    --paper-grid: #121c29;
+    --panel: #101a27;
+    --ink: #e3eaf3;
+    --ink-soft: #95a5b9;
+    --rule: #22324a;
+    --cobalt: #87a2ff;
+    --cobalt-soft: #1a2747;
+    --ant: #ff7442;
+    --board: #0d1622;
+    --board-grid: #172334;
+    --cell: #dbe5f0;
+    --ph-simple: #6f9fff;
+    --ph-chaos: #e0a84a;
+    --ph-highway: #43c491;
+    --ph-rewind: #b48cf0;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background-color: var(--paper);
+    background-image:
+      linear-gradient(var(--paper-grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--paper-grid) 1px, transparent 1px);
+    background-size: 28px 28px;
+    color: var(--ink);
+    font: 400 var(--s0)/1.65 var(--f-body);
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  a { color: var(--cobalt); text-underline-offset: 3px; }
+  a:hover { text-decoration-thickness: 2px; }
+  :focus-visible { outline: 2px solid var(--cobalt); outline-offset: 2px; border-radius: 4px; }
+  h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; line-height: 1.1; margin: 0; }
+  h2 { font-size: var(--s2); font-weight: 750; letter-spacing: -0.01em; }
+  h3 { font-size: var(--s1); font-weight: 650; }
+  p { margin: 0; }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  .eyebrow {
+    font: 500 var(--s-1)/1.2 var(--f-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-soft);
+  }
+  .mono { font-family: var(--f-mono); }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* ---------- hero ---------- */
+  .hero { padding-block: clamp(28px, 6vw, 56px) 20px; display: grid; gap: 14px; }
+  .hero h1 { font-size: var(--s3); font-weight: 800; letter-spacing: -0.03em; }
+  .hero h1 em { font-style: normal; color: var(--ant); }
+  .lede { max-width: 62ch; font-size: 1.15rem; color: var(--ink-soft); }
+  .lede strong { color: var(--ink); font-weight: 600; }
+
+  /* ---------- simulator ---------- */
+  .sim {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    overflow: hidden;
+    scroll-margin-top: 12px;
+  }
+  .stage { position: relative; min-width: 0; border-right: 1px solid var(--rule); display: flex; flex-direction: column; }
+  .stage canvas {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    background: var(--board);
+  }
+  .stage canvas.brush { cursor: crosshair; touch-action: none; }
+  .hint {
+    position: absolute; top: 10px; left: 10px;
+    font: 500 var(--s-1)/1.3 var(--f-mono);
+    background: var(--panel); color: var(--ink-soft);
+    border: 1px solid var(--rule); border-radius: 6px; padding: 4px 8px;
+    pointer-events: none;
+  }
+  .controls {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+    padding: 12px 14px; border-top: 1px solid var(--rule);
+  }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  button {
+    font: 500 0.9rem/1 var(--f-body);
+    color: var(--ink);
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 7px;
+    padding: 8px 12px;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  button:hover { border-color: var(--ink-soft); }
+  button.primary { background: var(--cobalt); border-color: var(--cobalt); color: var(--panel); min-width: 112px; justify-content: center; }
+  button[aria-pressed="true"] { background: var(--cobalt-soft); border-color: var(--cobalt); color: var(--cobalt); }
+  button.link { background: none; border: none; padding: 0; color: var(--cobalt); text-decoration: underline; text-underline-offset: 3px; font-size: inherit; }
+  .field { display: flex; align-items: center; gap: 8px; color: var(--ink-soft); font-size: 0.9rem; }
+  .field output { font: 500 var(--s-1) var(--f-mono); color: var(--ink); min-width: 9ch; }
+  input[type=range] { accent-color: var(--cobalt); width: 130px; }
+  select, input[type=text] {
+    font: 500 0.9rem var(--f-mono);
+    color: var(--ink);
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 7px;
+    padding: 7px 8px;
+  }
+  input[type=text] { width: 15ch; text-transform: uppercase; }
+  input[type=text][aria-invalid="true"] { border-color: var(--ant); }
+  .rule-error { color: var(--ant); font-size: var(--s-1); width: 100%; }
+
+  .side { padding: 18px; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+  .bigstep { font: 700 2.4rem/1 var(--f-display); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 7px;
+    font: 600 var(--s-1)/1 var(--f-mono); text-transform: uppercase; letter-spacing: 0.08em;
+    padding: 6px 10px; border-radius: 99px; border: 1.5px solid currentColor;
+  }
+  .pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .pill[data-phase="simple"] { color: var(--ph-simple); }
+  .pill[data-phase="chaos"] { color: var(--ph-chaos); }
+  .pill[data-phase="highway"] { color: var(--ph-highway); }
+  .pill[data-phase="rewind"] { color: var(--ph-rewind); }
+  .phase-note { font-size: 0.9rem; color: var(--ink-soft); }
+  dl.stats { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font-size: 0.9rem; }
+  dl.stats dt { color: var(--ink-soft); }
+  dl.stats dd { margin: 0; text-align: right; font: 500 0.9rem var(--f-mono); font-variant-numeric: tabular-nums; }
+
+  .timeline { display: grid; gap: 6px; }
+  .tl-bar { position: relative; height: 12px; border-radius: 3px; display: flex; overflow: visible; }
+  .tl-bar span { height: 100%; }
+  .tl-simple { width: 3.6%; background: var(--ph-simple); border-radius: 3px 0 0 3px; }
+  .tl-chaos { width: 67.7%; background: linear-gradient(90deg, var(--ph-simple), var(--ph-chaos) 6%, var(--ph-chaos)); opacity: 0.85; }
+  .tl-highway { flex: 1; background: var(--ph-highway); border-radius: 0 3px 3px 0; }
+  .tl-marker {
+    position: absolute; top: -5px; width: 3px; height: 22px; background: var(--ink);
+    border-radius: 2px; transform: translateX(-1.5px);
+  }
+  .tl-labels { position: relative; height: 1.2em; font: 500 0.7rem var(--f-mono); color: var(--ink-soft); }
+  .tl-labels span { position: absolute; white-space: nowrap; }
+  .jumps { display: flex; flex-wrap: wrap; gap: 6px; }
+  .jumps button { font: 500 var(--s-1) var(--f-mono); padding: 6px 9px; }
+  .kbd { font: 500 0.75rem var(--f-mono); border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 4px; padding: 1px 5px; }
+  .shortcuts { font-size: var(--s-1); color: var(--ink-soft); line-height: 1.9; }
+
+  @media (max-width: 860px) {
+    .sim { grid-template-columns: minmax(0, 1fr); }
+    .stage { border-right: none; border-bottom: 1px solid var(--rule); }
+    .stage canvas { aspect-ratio: 1 / 1; max-height: 70vh; }
+  }
+
+  /* ---------- article ---------- */
+  main.article { display: grid; gap: clamp(48px, 8vw, 88px); padding-block: clamp(48px, 8vw, 88px); }
+  section { display: grid; gap: 18px; scroll-margin-top: 16px; }
+  .prose { max-width: 68ch; display: grid; gap: 14px; }
+  .prose ul, .prose ol { margin: 0; padding-left: 1.3em; display: grid; gap: 8px; }
+  .prose li::marker { color: var(--ink-soft); font-family: var(--f-mono); }
+  .prose strong { font-weight: 600; }
+  .section-head { display: grid; gap: 8px; max-width: 68ch; }
+
+  .two-col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 420px); gap: 32px; align-items: start; }
+  @media (max-width: 860px) { .two-col { grid-template-columns: minmax(0, 1fr); } }
+
+  .rule-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .rule-card {
+    display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; align-items: center;
+    background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius); padding: 12px;
+  }
+  .rule-card svg { width: 64px; height: 64px; display: block; }
+  .rule-card b { display: block; font-family: var(--f-display); font-size: 1.05rem; }
+  .rule-card span { font-size: 0.9rem; color: var(--ink-soft); line-height: 1.4; display: block; }
+  @media (max-width: 520px) { .rule-cards { grid-template-columns: minmax(0, 1fr); } }
+
+  figure { margin: 0; }
+  .demo {
+    background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius); overflow: hidden;
+  }
+  .demo canvas { display: block; width: 100%; aspect-ratio: 1 / 1; background: var(--board); }
+  .demo figcaption { padding: 12px 14px; display: grid; gap: 10px; border-top: 1px solid var(--rule); }
+  .demo-text { font-size: 0.95rem; min-height: 3.3em; }
+  .demo-text b { font-family: var(--f-mono); font-weight: 500; }
+
+  .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  @media (max-width: 860px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 560px) { .cards { grid-template-columns: minmax(0, 1fr); } }
+  .card {
+    background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius);
+    overflow: hidden; display: flex; flex-direction: column;
+  }
+  .card canvas { display: block; width: 100%; aspect-ratio: 4 / 3; background: var(--board); }
+  .card .body { padding: 14px; display: grid; gap: 8px; flex: 1; align-content: start; }
+  .card .meta { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .card .tag { font: 500 var(--s-1) var(--f-mono); color: var(--ink-soft); }
+  .card p { font-size: 0.95rem; color: var(--ink-soft); }
+  .card .actions { padding: 0 14px 14px; }
+  .card h3 { font-size: 1.1rem; }
+  .rule-word { font: 500 1rem var(--f-mono); letter-spacing: 0.06em; }
+  .phase-num { color: var(--ink-soft); font-family: var(--f-mono); font-size: var(--s-1); }
+
+  .callout {
+    max-width: 68ch;
+    border: 1.5px dashed var(--cobalt); border-radius: var(--radius);
+    padding: 16px 18px; display: grid; gap: 10px; background: var(--panel);
+  }
+  .callout .eyebrow { color: var(--cobalt); }
+  .callout .row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  .proof { counter-reset: p; list-style: none; padding: 0 !important; gap: 12px !important; }
+  .proof li { counter-increment: p; display: grid; grid-template-columns: 2.2em minmax(0, 1fr); gap: 4px; }
+  .proof li::before {
+    content: counter(p); font: 600 0.85rem/1.9 var(--f-mono); color: var(--cobalt);
+    width: 1.9em; height: 1.9em; text-align: center; border: 1.5px solid var(--cobalt); border-radius: 50%;
+  }
+  .proof-fig { max-width: 360px; }
+  .proof-fig svg { width: 100%; height: auto; display: block; }
+  .proof-fig figcaption { font-size: var(--s-1); color: var(--ink-soft); margin-top: 6px; }
+
+  .refs { font-size: 0.92rem; color: var(--ink-soft); }
+  .refs li { padding-left: 2px; }
+  footer {
+    border-top: 1px solid var(--rule); padding-block: 24px 40px;
+    font-size: var(--s-1); color: var(--ink-soft); display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between;
+  }
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <p class="eyebrow">Autômato celular · Chris Langton, 1986</p>
+    <h1>A Formiga de <em>Langton</em></h1>
+    <p class="lede">Uma formiga, uma grade infinita e duas regras. Por quase <strong>10 mil passos</strong> ela parece andar ao acaso. Então começa a construir uma <strong>estrada</strong> e nunca mais para. Rode a simulação abaixo e leia depois por que isso acontece.</p>
+  </header>
+
+  <section class="sim" id="simulador" aria-label="Simulador">
+    <div class="stage">
+      <canvas id="board" aria-label="Grade da simulação"></canvas>
+      <span class="hint" id="brushHint" hidden>Clique ou arraste para pintar casas</span>
+      <div class="controls">
+        <div class="btns">
+          <button id="play" class="primary" title="Espaço">▶ Iniciar</button>
+          <button id="back1" title="Seta para a esquerda" aria-label="Voltar um passo">◀ 1</button>
+          <button id="fwd1" title="Seta para a direita" aria-label="Avançar um passo">1 ▶</button>
+          <button id="rewind" aria-pressed="false" title="Roda a formiga para trás no tempo">⟲ Rebobinar</button>
+          <button id="brush" aria-pressed="false" title="Pinte casas na grade para criar obstáculos">✎ Pintar</button>
+          <button id="reset" title="Tecla R">Reiniciar</button>
+        </div>
+        <label class="field" for="speed">Velocidade
+          <input id="speed" type="range" min="0" max="100" value="19">
+          <output id="speedOut" for="speed"></output>
+        </label>
+        <div class="field">
+          <label for="preset">Regra</label>
+          <select id="preset">
+            <option value="RL">RL · clássica</option>
+            <option value="RLR">RLR · caótica</option>
+            <option value="LLRR">LLRR · simétrica</option>
+            <option value="LRRRRRLLR">LRRRRRLLR · quadrado</option>
+            <option value="RRLLLRLLLRRR">RRLLLRLLLRRR · triângulo</option>
+            <option value="LLRRRLRLRLLR">LLRRRLRLRLLR · estrada sinuosa</option>
+            <option value="custom">Outra…</option>
+          </select>
+          <input id="rule" type="text" value="RL" spellcheck="false" autocomplete="off" aria-label="Regra personalizada" aria-describedby="ruleError" hidden>
+        </div>
+        <p class="rule-error" id="ruleError" hidden></p>
+      </div>
+    </div>
+
+    <aside class="side" aria-live="off">
+      <div>
+        <p class="eyebrow">Passo</p>
+        <p class="bigstep" id="stepCount">0</p>
+      </div>
+      <div style="display:grid;gap:8px">
+        <span class="pill" id="phase" data-phase="simple">Simplicidade</span>
+        <p class="phase-note" id="phaseNote"></p>
+      </div>
+      <div class="timeline" id="timeline">
+        <div class="tl-bar" aria-hidden="true">
+          <span class="tl-simple"></span><span class="tl-chaos"></span><span class="tl-highway"></span>
+          <i class="tl-marker" id="tlMarker"></i>
+        </div>
+        <div class="tl-labels" aria-hidden="true">
+          <span style="left:0">0</span>
+          <span style="left:71.3%;transform:translateX(-50%)">9.977</span>
+          <span style="right:0">14 mil</span>
+        </div>
+      </div>
+      <dl class="stats">
+        <dt>Casas pintadas</dt><dd id="cells">0</dd>
+        <dt>Posição</dt><dd id="pos">0, 0</dd>
+        <dt>Direção</dt><dd id="dir">↑ norte</dd>
+      </dl>
+      <div style="display:grid;gap:8px">
+        <p class="eyebrow">Ir para o passo</p>
+        <div class="jumps">
+          <button data-jump="472">472</button>
+          <button data-jump="5000">5.000</button>
+          <button data-jump="9977">9.977</button>
+          <button data-jump="12000">12.000</button>
+        </div>
+      </div>
+      <p class="shortcuts">
+        <span class="kbd">Espaço</span> iniciar/pausar · <span class="kbd">←</span> <span class="kbd">→</span> um passo · <span class="kbd">R</span> reiniciar
+      </p>
+    </aside>
+  </section>
+
+  <main class="article">
+
+    <section id="regras">
+      <div class="two-col">
+        <div class="prose">
+          <p class="eyebrow">As regras</p>
+          <h2>Duas regras, nada mais</h2>
+          <p>A formiga vive numa grade infinita em que todas as casas começam brancas. A cada passo ela olha a cor da casa em que está e faz uma de duas coisas:</p>
+          <div class="rule-cards">
+            <div class="rule-card">
+              <svg viewBox="0 0 64 64" aria-hidden="true">
+                <rect x="6" y="6" width="52" height="52" rx="4" fill="var(--board)" stroke="var(--ink-soft)" stroke-width="2"></rect>
+                <path d="M32 54 V34 Q32 24 42 24 H50" fill="none" stroke="var(--ant)" stroke-width="4" stroke-linecap="round"></path>
+                <path d="M46 17 L55 24 L46 31 Z" fill="var(--ant)"></path>
+              </svg>
+              <div><b>Casa branca</b><span>vira 90° à direita, pinta a casa de preto e anda uma casa.</span></div>
+            </div>
+            <div class="rule-card">
+              <svg viewBox="0 0 64 64" aria-hidden="true">
+                <rect x="6" y="6" width="52" height="52" rx="4" fill="var(--cell)" stroke="var(--cell)" stroke-width="2"></rect>
+                <path d="M32 54 V34 Q32 24 22 24 H14" fill="none" stroke="var(--ant)" stroke-width="4" stroke-linecap="round"></path>
+                <path d="M18 17 L9 24 L18 31 Z" fill="var(--ant)"></path>
+              </svg>
+              <div><b>Casa preta</b><span>vira 90° à esquerda, pinta a casa de branco e anda uma casa.</span></div>
+            </div>
+          </div>
+          <p>Não há sorteio, memória nem objetivo. A formiga não sabe onde já passou e só enxerga a casa embaixo dela. Mesmo assim, como cada passo muda a cor de uma casa, o que ela faz agora altera o caminho que vai encontrar quando voltar ali.</p>
+          <p>Esse tipo de sistema, em que uma grade de casas muda de estado por regras locais, é chamado de <strong>autômato celular</strong>. A formiga é um dos exemplos mais simples já estudados que produz um comportamento difícil de prever.</p>
+        </div>
+        <figure class="demo">
+          <canvas id="demo" aria-label="Demonstração passo a passo das regras"></canvas>
+          <figcaption>
+            <p class="demo-text" id="demoText"></p>
+            <div class="btns">
+              <button id="demoPrev" aria-label="Passo anterior">◀</button>
+              <button id="demoPlay" aria-pressed="false">▶ Animar</button>
+              <button id="demoNext" aria-label="Próximo passo">▶</button>
+              <button id="demoReset">Do início</button>
+            </div>
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section id="fases">
+      <div class="section-head">
+        <p class="eyebrow">O que acontece</p>
+        <h2>Três fases, sempre na mesma ordem</h2>
+        <p class="prose">Começando da grade vazia, a formiga passa por três comportamentos bem diferentes. Os momentos abaixo foram calculados por esta página, com o mesmo código do simulador.</p>
+      </div>
+      <div class="cards">
+        <article class="card">
+          <canvas data-snapshot="472" aria-label="Formiga no passo 472"></canvas>
+          <div class="body">
+            <div class="meta"><span class="phase-num">Fase 1</span><span class="tag num">passo 472</span></div>
+            <h3>Simplicidade</h3>
+            <p>Nas primeiras centenas de passos surgem figuras pequenas e organizadas, muitas vezes simétricas. No passo 472 o desenho fica idêntico se girado meia-volta.</p>
+          </div>
+          <div class="actions"><button data-open="472">Abrir no simulador</button></div>
+        </article>
+        <article class="card">
+          <canvas data-snapshot="6000" aria-label="Formiga no passo 6.000"></canvas>
+          <div class="body">
+            <div class="meta"><span class="phase-num">Fase 2</span><span class="tag num">passo 6.000</span></div>
+            <h3>Caos</h3>
+            <p>Depois o desenho vira uma mancha irregular que cresce sem padrão aparente. Essa fase dura milhares de passos.</p>
+          </div>
+          <div class="actions"><button data-open="6000">Abrir no simulador</button></div>
+        </article>
+        <article class="card">
+          <canvas data-snapshot="11500" aria-label="Formiga no passo 11.500"></canvas>
+          <div class="body">
+            <div class="meta"><span class="phase-num">Fase 3</span><span class="tag num">passo 11.500</span></div>
+            <h3>Estrada</h3>
+            <p>No passo 9.977 começa um ciclo de 104 passos. A cada ciclo a formiga anda 2 casas na diagonal e repete os mesmos movimentos, para sempre.</p>
+          </div>
+          <div class="actions"><button data-open="11500">Abrir no simulador</button></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="por-que">
+      <div class="prose">
+        <p class="eyebrow">A pergunta</p>
+        <h2>Por que a estrada aparece?</h2>
+        <p>A resposta curta é que ninguém sabe provar. Mas dá para entender bastante coisa, separando a pergunta em três partes.</p>
+
+        <h3>O caos é determinístico</h3>
+        <p>A formiga não tem nada de aleatório. Começando da grade vazia, ela faz sempre a mesma sequência de movimentos e a estrada começa sempre no passo 9.977. O que chamamos de caos é um comportamento tão emaranhado que a única forma conhecida de saber o que vem depois é simular passo a passo.</p>
+
+        <h3>A estrada se mantém sozinha</h3>
+        <p>Durante um ciclo de 104 passos, a formiga só mexe em casas próximas de onde está. À frente dela a grade está toda branca, porque ela nunca passou por lá. Atrás fica apenas o trecho de estrada que ela acabou de construir.</p>
+        <p>Por isso, ao começar o ciclo seguinte, ela encontra exatamente a mesma vizinhança do ciclo anterior, só que 2 casas mais adiante na diagonal. Mesma vizinhança e mesmas regras produzem os mesmos movimentos, e o argumento vale de novo no ciclo seguinte, e no outro. A estrada funciona como uma armadilha: depois que a formiga entra nela, nunca mais sai.</p>
+
+        <h3>Por que ela começa ainda é um mistério</h3>
+        <p>Para entrar na estrada, a formiga precisa montar por acaso um pequeno arranjo de casas que dispara o ciclo. Na fase de caos a vizinhança dela muda de um jeito que lembra o acaso, então, com tempo suficiente, esse arranjo acaba aparecendo. Como a estrada é permanente, basta acontecer uma vez.</p>
+        <p>Em todas as configurações iniciais finitas já testadas, a formiga acabou construindo uma estrada. Ainda assim, ninguém conseguiu provar que isso sempre acontece. É uma conjectura em aberto.</p>
+      </div>
+      <div class="callout">
+        <p class="eyebrow">Experimento</p>
+        <p>Com a estrada já formada, coloque um bloco de 2×2 casas pretas no caminho da formiga. A estrada se desfaz e o caos volta. Depois de alguns milhares de passos, a formiga encontra uma nova estrada. O detector de ciclos do simulador mostra em que passo ela recomeça.</p>
+        <div class="row"><button id="expObstacle">Fazer o experimento</button></div>
+      </div>
+    </section>
+
+    <section id="prova">
+      <div class="two-col">
+        <div class="prose">
+          <p class="eyebrow">O que está provado</p>
+          <h2>A formiga sempre escapa</h2>
+          <p>Em 1992, Leonid Bunimovich e Serge Troubetzkoy provaram que a trajetória da formiga é ilimitada: qualquer que seja o desenho inicial, ela nunca fica presa numa região finita da grade. O resultado ficou conhecido como teorema de Cohen–Kong. A ideia da prova cabe em poucos passos. Suponha que a formiga ficasse presa e veja a contradição:</p>
+          <ol class="proof">
+            <li><span>A cada passo a formiga vira 90°, então alterna: um passo na horizontal, o seguinte na vertical. Por isso cada casa é sempre alcançada na mesma orientação. Em metade delas, como as casas claras de um tabuleiro de xadrez, a formiga sempre chega andando na horizontal; nas outras, sempre na vertical.</span></li>
+            <li><span>Presa numa região finita, a formiga visitaria algumas casas infinitas vezes. Chame esse conjunto de <b>S</b>. As demais casas recebem só um número finito de visitas, então a partir de algum momento a formiga anda apenas dentro de S.</span></li>
+            <li><span>Escolha a casa <b>c</b> de S que está na linha mais alta e, nessa linha, mais à direita. A casa acima de c e a casa à direita de c estão fora de S, então a formiga deixa de entrar nelas.</span></li>
+            <li><span>Se c é alcançada na horizontal, a formiga só pode chegar vindo da esquerda e só pode sair para baixo. Andar para a direita e sair para baixo é virar à direita, o que exige que c esteja branca em todas as visitas.</span></li>
+            <li><span>Se c é alcançada na vertical, a formiga só pode chegar vindo de baixo e só pode sair para a esquerda. Isso é virar à esquerda, o que exige que c esteja preta em todas as visitas.</span></li>
+            <li><span>Mas cada visita inverte a cor de c, então as visitas alternam entre branca e preta. Os dois casos são impossíveis, e a formiga não pode ficar presa.</span></li>
+          </ol>
+          <p>A estrada é o jeito que a formiga encontra de escapar. O teorema garante a fuga, mas não diz que ela acontece por uma estrada. Essa é justamente a parte que continua sem prova.</p>
+        </div>
+        <figure class="proof-fig">
+          <svg viewBox="0 0 240 220" role="img" aria-label="Diagrama: a casa c no canto superior direito do conjunto S, com saídas para cima e para a direita bloqueadas">
+            <g stroke="var(--rule)" stroke-width="1">
+              <path d="M20 20 H220 M20 60 H220 M20 100 H220 M20 140 H220 M20 180 H220"></path>
+              <path d="M20 20 V180 M60 20 V180 M100 20 V180 M140 20 V180 M180 20 V180 M220 20 V180"></path>
+            </g>
+            <path d="M20 60 H180 V180 H20 Z" fill="var(--cobalt)" fill-opacity="0.14" stroke="var(--cobalt)" stroke-width="2"></path>
+            <rect x="140" y="60" width="40" height="40" fill="var(--cobalt)" fill-opacity="0.35" stroke="var(--cobalt)" stroke-width="2"></rect>
+            <text x="160" y="86" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="16" font-weight="600" fill="var(--ink)">c</text>
+            <text x="40" y="168" font-family="IBM Plex Mono, monospace" font-size="15" font-weight="600" fill="var(--cobalt)">S</text>
+            <g stroke="var(--ant)" stroke-width="3" stroke-linecap="round">
+              <path d="M160 58 V34"></path><path d="M152 26 L168 42 M168 26 L152 42"></path>
+              <path d="M182 80 H206"></path><path d="M206 72 L222 88 M222 72 L206 88" transform="translate(-6 0)"></path>
+            </g>
+            <text x="160" y="16" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="11" fill="var(--ink-soft)">fora de S</text>
+            <text x="200" y="118" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="11" fill="var(--ink-soft)">fora de S</text>
+          </svg>
+          <figcaption>A casa c fica no canto superior direito de S. Sair para cima ou para a direita levaria a formiga para fora de S, o que não acontece mais.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section id="tempo">
+      <div class="prose">
+        <p class="eyebrow">Reversibilidade</p>
+        <h2>Dá para voltar no tempo</h2>
+        <p>As regras não perdem informação. Olhando a grade, a posição e a direção da formiga, dá para descobrir exatamente qual foi o passo anterior: ela recua uma casa, devolve àquela casa a cor que tinha e desfaz a virada. Repetindo isso, o desenho inteiro se desmonta na ordem inversa até a grade voltar a ficar branca no passo 0.</p>
+        <p>Isso mostra de outro jeito que o caos não é desordem verdadeira. Nada se perdeu no caminho; a informação só ficou embaralhada.</p>
+      </div>
+      <div class="callout">
+        <p class="eyebrow">Experimento</p>
+        <p>Comece no passo 12.000, com a estrada já formada, e rode a formiga para trás. Ela recolhe a estrada, atravessa o caos ao contrário e termina na grade vazia.</p>
+        <div class="row"><button id="expRewind">Rebobinar a partir do passo 12.000</button></div>
+      </div>
+    </section>
+
+    <section id="variacoes">
+      <div class="section-head">
+        <p class="eyebrow">Generalizações</p>
+        <h2>Mais cores, outras formigas</h2>
+        <div class="prose">
+          <p>Greg Turk e Jim Propp estudaram uma extensão com mais de duas cores. A regra vira uma palavra: a letra na posição <i>k</i> diz o que fazer numa casa da cor <i>k</i> (<b class="mono">R</b> direita, <b class="mono">L</b> esquerda). Ao sair, a formiga troca a cor da casa pela próxima da lista, voltando à primeira depois da última. A formiga original é <span class="rule-word">RL</span>. No simulador também valem <b class="mono">N</b> (segue reto) e <b class="mono">U</b> (meia-volta).</p>
+        </div>
+      </div>
+      <div class="cards" id="gallery"></div>
+    </section>
+
+    <section id="computa">
+      <div class="prose">
+        <p class="eyebrow">Computação</p>
+        <h2>A formiga calcula</h2>
+        <p>Em 2002, A. Gajardo, A. Moreira e E. Goles mostraram que qualquer circuito lógico, feito de portas E, OU e NÃO, pode ser codificado num desenho inicial de casas pretas. A trajetória de uma única formiga passa pelo desenho e calcula o resultado do circuito.</p>
+        <p>Isso torna a formiga <strong>universal</strong>: com o desenho inicial certo, ela simula qualquer computador. Uma consequência é que certas perguntas sobre o futuro da formiga são indecidíveis, ou seja, nenhum algoritmo consegue respondê-las para todos os desenhos iniciais possíveis. Ajuda a entender por que um sistema de duas regras resiste tanto a ser provado.</p>
+      </div>
+    </section>
+
+    <section id="langton">
+      <div class="prose">
+        <p class="eyebrow">O autor</p>
+        <h2>Chris Langton e a vida artificial</h2>
+        <p>Christopher Langton é um cientista da computação americano, considerado um dos fundadores da <strong>vida artificial</strong>, a área que estuda comportamentos típicos de seres vivos recriados em computador. Ele descreveu a formiga em 1986, no artigo <i>Studying Artificial Life with Cellular Automata</i>, publicado na revista Physica D quando estava na Universidade de Michigan.</p>
+        <p>Em 1987 ele organizou, no Laboratório Nacional de Los Alamos, o encontro considerado a primeira conferência de vida artificial. A formiga virou um exemplo clássico da ideia central da área: regras locais muito simples podem produzir comportamentos globais que ninguém programou diretamente.</p>
+      </div>
+    </section>
+
+    <section id="referencias">
+      <div class="prose">
+        <p class="eyebrow">Para ler mais</p>
+        <h2>Referências</h2>
+        <ul class="refs">
+          <li>C. G. Langton, “Studying artificial life with cellular automata”, <i>Physica D</i> 22 (1986), 120–149. <a href="https://doi.org/10.1016/0167-2789(86)90237-X" target="_blank" rel="noopener">doi:10.1016/0167-2789(86)90237-X</a></li>
+          <li>L. A. Bunimovich e S. E. Troubetzkoy, “Recurrence properties of Lorentz lattice gas cellular automata”, <i>Journal of Statistical Physics</i> 67 (1992).</li>
+          <li>D. Gale, J. Propp, S. Sutherland e S. Troubetzkoy, “Further travels with my ant”. <a href="https://arxiv.org/abs/math/9501233" target="_blank" rel="noopener">arXiv:math/9501233</a></li>
+          <li>A. Gajardo, A. Moreira e E. Goles, “Complexity of Langton’s ant”, <i>Discrete Applied Mathematics</i> 117 (2002), 41–50. <a href="https://arxiv.org/abs/nlin/0306022" target="_blank" rel="noopener">arXiv:nlin/0306022</a></li>
+          <li>Wikipédia, <a href="https://en.wikipedia.org/wiki/Langton%27s_ant" target="_blank" rel="noopener">Langton’s ant</a>.</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>Simulação em JavaScript puro, sem bibliotecas. Todos os números desta página saem do mesmo código do simulador.</span>
+    <span>Formiga de Langton · 1986</span>
+  </footer>
+</div>
+
+<script src="langton.js"></script>
+<script>
+(function () {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const fmt = new Intl.NumberFormat('pt-BR');
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const EXTRA = ['#2f6fdb', '#e0a020', '#1f9e89', '#d4507a', '#7a9a1f', '#8a5cd6', '#e06a2c', '#3aa0c8', '#a0522d', '#6b7a8f', '#c43c3c'];
+  const DIR_NAMES = ['↑ norte', '→ leste', '↓ sul', '← oeste'];
+
+  let tok = {};
+  function readTokens() {
+    const cs = getComputedStyle(document.documentElement);
+    const g = (n) => cs.getPropertyValue(n).trim();
+    tok = { board: g('--board'), grid: g('--board-grid'), cell: g('--cell'), ant: g('--ant'), ink: g('--ink') };
+  }
+
+  // ---------- shared renderer ----------
+  function fitCanvas(canvas) {
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.max(1, Math.round(canvas.clientWidth * dpr));
+    const h = Math.max(1, Math.round(canvas.clientHeight * dpr));
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+    return dpr;
+  }
+
+  function fitView(canvas, b, pad, maxCell) {
+    const W = canvas.width, H = canvas.height;
+    const bw = b.maxX - b.minX + 1 + pad * 2;
+    const bh = b.maxY - b.minY + 1 + pad * 2;
+    let size = Math.min(W / bw, H / bh, maxCell);
+    if (size >= 3) size = Math.floor(size);
+    return {
+      size,
+      ox: (W - bw * size) / 2 - (b.minX - pad) * size,
+      oy: (H - bh * size) / 2 - (b.minY - pad) * size,
+    };
+  }
+
+  function renderBoard(canvas, ant, view, opts) {
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.width, H = canvas.height;
+    const { size, ox, oy } = view;
+    ctx.fillStyle = tok.board;
+    ctx.fillRect(0, 0, W, H);
+
+    if (size >= 7 * dpr) {
+      ctx.strokeStyle = tok.grid;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = Math.ceil(-ox / size); x * size + ox <= W; x++) {
+        const px = Math.round(ox + x * size) + 0.5;
+        ctx.moveTo(px, 0); ctx.lineTo(px, H);
+      }
+      for (let y = Math.ceil(-oy / size); y * size + oy <= H; y++) {
+        const py = Math.round(oy + y * size) + 0.5;
+        ctx.moveTo(0, py); ctx.lineTo(W, py);
+      }
+      ctx.stroke();
+    }
+
+    const cs = Math.max(size, 1);
+    let current = -1;
+    ant.forEachCell((x, y, c) => {
+      if (c !== current) { ctx.fillStyle = c === 1 ? tok.cell : EXTRA[(c - 2) % EXTRA.length]; current = c; }
+      ctx.fillRect(ox + x * size, oy + y * size, cs, cs);
+    });
+
+    if (!opts || opts.ant !== false) drawAnt(ctx, ox + (ant.x + 0.5) * size, oy + (ant.y + 0.5) * size, size, ant.dir, dpr);
+  }
+
+  function drawAnt(ctx, cx, cy, size, dir, dpr) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(dir * Math.PI / 2);
+    ctx.fillStyle = tok.ant;
+    ctx.strokeStyle = tok.ant;
+    if (size >= 16 * dpr) {
+      const s = size;
+      ctx.lineWidth = Math.max(1, s * 0.045);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (const side of [-1, 1]) {
+        for (const [y0, y1, x1] of [[-0.06, -0.2, 0.36], [0.0, 0.02, 0.4], [0.06, 0.26, 0.34]]) {
+          ctx.moveTo(side * 0.05 * s, y0 * s);
+          ctx.lineTo(side * x1 * s, y1 * s);
+        }
+        ctx.moveTo(side * 0.04 * s, -0.3 * s);
+        ctx.lineTo(side * 0.17 * s, -0.46 * s);
+      }
+      ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0, -0.27 * s, 0.1 * s, 0.09 * s, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(0, -0.04 * s, 0.08 * s, 0.12 * s, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(0, 0.24 * s, 0.13 * s, 0.18 * s, 0, 0, Math.PI * 2); ctx.fill();
+    } else {
+      const r = Math.max(size * 1.6, 9 * dpr);
+      ctx.globalAlpha = 0.35;
+      ctx.lineWidth = 2 * dpr;
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 1;
+      const t = Math.max(size, 7 * dpr);
+      ctx.beginPath();
+      ctx.moveTo(0, -t * 0.6); ctx.lineTo(t * 0.45, t * 0.45); ctx.lineTo(-t * 0.45, t * 0.45);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // ---------- main simulator ----------
+  const board = $('board');
+  const ui = {
+    play: $('play'), back1: $('back1'), fwd1: $('fwd1'), rewind: $('rewind'), brush: $('brush'), reset: $('reset'),
+    speed: $('speed'), speedOut: $('speedOut'), preset: $('preset'), rule: $('rule'), ruleError: $('ruleError'),
+    stepCount: $('stepCount'), phase: $('phase'), phaseNote: $('phaseNote'), timeline: $('timeline'), tlMarker: $('tlMarker'),
+    cells: $('cells'), pos: $('pos'), dir: $('dir'), brushHint: $('brushHint'),
+  };
+  const S = {
+    ant: new Langton.Ant('RL'),
+    running: false, reverse: false, edited: false, brush: false,
+    view: null, painting: null, detect: null, lastDetect: 0, visible: true, raf: 0,
+  };
+  const MAX_SPEED = 50000;
+  // why: a log-scale slider covers 1 to 50k steps per frame with one control.
+  const stepsPerFrame = () => Math.max(1, Math.round(Math.pow(MAX_SPEED, ui.speed.value / 100)));
+  function setSpeed(n) {
+    ui.speed.value = Math.round(100 * Math.log(n) / Math.log(MAX_SPEED));
+    updateSpeed();
+  }
+  function updateSpeed() { ui.speedOut.value = fmt.format(stepsPerFrame()) + ' /quadro'; }
+
+  function detectNow() { S.detect = S.ant.detectPeriod(); S.lastDetect = performance.now(); }
+
+  function phaseInfo() {
+    const a = S.ant, d = S.detect;
+    if (S.running && S.reverse) return ['rewind', 'Voltando no tempo', 'Cada passo é desfeito exatamente. Sem obstáculos pintados, a grade termina vazia no passo 0.'];
+    if (d) {
+      const h = d.dx === 0 ? '' : `${Math.abs(d.dx)} ${Math.abs(d.dx) === 1 ? 'casa' : 'casas'} para a ${d.dx < 0 ? 'esquerda' : 'direita'}`;
+      const v = d.dy === 0 ? '' : `${Math.abs(d.dy)} ${Math.abs(d.dy) === 1 ? 'casa' : 'casas'} para ${d.dy < 0 ? 'cima' : 'baixo'}`;
+      const since = a.steps - d.start < 15000 ? `desde o passo ${fmt.format(d.start)}` : 'há mais de 15 mil passos';
+      return ['highway', 'Estrada', `Ciclo de ${fmt.format(d.period)} passos ${since}. A cada ciclo a formiga anda ${[h, v].filter(Boolean).join(' e ')}.`];
+    }
+    if (a.rule === 'RL' && !S.edited && a.steps < 500) return ['simple', 'Simplicidade', 'Figuras pequenas e organizadas, às vezes simétricas.'];
+    if (a.rule === 'RL') return ['chaos', 'Caos', S.edited ? 'Nenhum ciclo nos últimos passos. Com obstáculos, a formiga costuma voltar ao caos antes de achar uma nova estrada.' : 'Nenhum ciclo nos últimos passos. A estrada começa no passo 9.977.'];
+    return ['chaos', 'Sem ciclo', 'Nenhum ciclo nos últimos passos.'];
+  }
+
+  function updatePanel() {
+    const a = S.ant;
+    ui.stepCount.textContent = fmt.format(a.steps);
+    const [key, label, note] = phaseInfo();
+    if (ui.phase.dataset.phase !== key) ui.phase.dataset.phase = key;
+    if (ui.phase.textContent !== label) ui.phase.textContent = label;
+    if (ui.phaseNote.textContent !== note) ui.phaseNote.textContent = note;
+    ui.timeline.hidden = a.rule !== 'RL';
+    ui.tlMarker.style.left = Math.min(100, (a.steps / 14000) * 100) + '%';
+    ui.cells.textContent = fmt.format(a.cells.size);
+    ui.pos.textContent = a.x + ', ' + (-a.y);
+    ui.dir.textContent = DIR_NAMES[a.dir];
+    ui.play.textContent = S.running && !S.reverse ? '❚❚ Pausar' : '▶ Iniciar';
+    ui.rewind.setAttribute('aria-pressed', String(S.running && S.reverse));
+    ui.back1.disabled = a.steps === 0;
+  }
+
+  function draw() {
+    fitCanvas(board);
+    if (!S.painting) S.view = fitView(board, S.ant, 4, 34 * (window.devicePixelRatio || 1));
+    renderBoard(board, S.ant, S.view);
+    updatePanel();
+  }
+
+  function frame(t) {
+    S.raf = 0;
+    if (!S.running) return;
+    if (S.visible) {
+      const n = stepsPerFrame();
+      if (S.reverse) {
+        if (S.ant.runBack(n) < n) S.running = false;
+      } else {
+        S.ant.run(n);
+      }
+      if (t - S.lastDetect > 200 || !S.running) detectNow();
+      draw();
+    }
+    if (S.running) S.raf = requestAnimationFrame(frame);
+  }
+
+  function start(reverse) {
+    S.reverse = !!reverse;
+    S.running = true;
+    if (!S.raf) S.raf = requestAnimationFrame(frame);
+    updatePanel();
+  }
+  function stop() { S.running = false; updatePanel(); }
+
+  function loadRule(rule) {
+    try {
+      S.ant = new Langton.Ant(rule);
+    } catch (e) {
+      ui.rule.setAttribute('aria-invalid', 'true');
+      ui.ruleError.textContent = e.message;
+      ui.ruleError.hidden = false;
+      return false;
+    }
+    ui.rule.removeAttribute('aria-invalid');
+    ui.ruleError.hidden = true;
+    ui.rule.value = S.ant.rule;
+    const known = [...ui.preset.options].some((o) => o.value === S.ant.rule);
+    ui.preset.value = known ? S.ant.rule : 'custom';
+    ui.rule.hidden = known;
+    S.edited = false;
+    S.detect = null;
+    return true;
+  }
+
+  function goTo(n) {
+    if (n > S.ant.steps) S.ant.run(n - S.ant.steps);
+    else S.ant.runBack(S.ant.steps - n);
+    detectNow();
+    draw();
+  }
+
+  function scrollToSim() {
+    $('simulador').scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+  }
+
+  ui.play.addEventListener('click', () => (S.running && !S.reverse ? stop() : start(false)));
+  ui.rewind.addEventListener('click', () => (S.running && S.reverse ? stop() : start(true)));
+  ui.fwd1.addEventListener('click', () => { stop(); S.ant.step(); detectNow(); draw(); });
+  ui.back1.addEventListener('click', () => { stop(); S.ant.back(); detectNow(); draw(); });
+  ui.reset.addEventListener('click', () => { stop(); loadRule(S.ant.rule); draw(); });
+  ui.speed.addEventListener('input', updateSpeed);
+  ui.preset.addEventListener('change', () => {
+    if (ui.preset.value === 'custom') { ui.rule.hidden = false; ui.rule.focus(); ui.rule.select(); return; }
+    stop(); loadRule(ui.preset.value); draw();
+  });
+  ui.rule.addEventListener('change', () => { stop(); loadRule(ui.rule.value); draw(); });
+  ui.brush.addEventListener('click', () => {
+    S.brush = !S.brush;
+    ui.brush.setAttribute('aria-pressed', String(S.brush));
+    board.classList.toggle('brush', S.brush);
+    ui.brushHint.hidden = !S.brush;
+  });
+  document.querySelectorAll('[data-jump]').forEach((b) => b.addEventListener('click', () => {
+    stop();
+    if (S.ant.rule !== 'RL' || S.edited) loadRule('RL');
+    goTo(Number(b.dataset.jump));
+  }));
+
+  function cellAt(e) {
+    const r = board.getBoundingClientRect();
+    const dpr = board.width / r.width;
+    const v = S.view;
+    return [Math.floor(((e.clientX - r.left) * dpr - v.ox) / v.size), Math.floor(((e.clientY - r.top) * dpr - v.oy) / v.size)];
+  }
+  board.addEventListener('pointerdown', (e) => {
+    if (!S.brush) return;
+    e.preventDefault();
+    const [x, y] = cellAt(e);
+    const color = (S.ant.colorAt(x, y) + 1) % S.ant.turns.length;
+    S.painting = { color, last: x + ',' + y };
+    S.ant.setCell(x, y, color);
+    S.edited = true;
+    board.setPointerCapture(e.pointerId);
+    draw();
+  });
+  board.addEventListener('pointermove', (e) => {
+    if (!S.painting) return;
+    const [x, y] = cellAt(e);
+    const k = x + ',' + y;
+    if (k === S.painting.last) return;
+    S.painting.last = k;
+    S.ant.setCell(x, y, S.painting.color);
+    draw();
+  });
+  const endPaint = () => { if (S.painting) { S.painting = null; draw(); } };
+  board.addEventListener('pointerup', endPaint);
+  board.addEventListener('pointercancel', endPaint);
+
+  window.addEventListener('keydown', (e) => {
+    const tag = (e.target && e.target.tagName) || '';
+    if (/INPUT|SELECT|TEXTAREA/.test(tag) || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.code === 'Space') {
+      // why: Space on a focused button already clicks it; handling it here too would toggle twice.
+      if (tag === 'BUTTON') return;
+      e.preventDefault(); ui.play.click();
+    }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); ui.fwd1.click(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); ui.back1.click(); }
+    else if (e.key === 'r' || e.key === 'R') ui.reset.click();
+  });
+
+  new IntersectionObserver((entries) => { S.visible = entries[0].isIntersecting; }).observe(board);
+
+  // ---------- experiments ----------
+  $('expObstacle').addEventListener('click', () => {
+    stop();
+    loadRule('RL');
+    S.ant.run(12000);
+    const bx = S.ant.x - 20, by = S.ant.y + 20;
+    for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) S.ant.setCell(bx + dx, by + dy, 1);
+    S.edited = true;
+    detectNow();
+    setSpeed(20);
+    draw();
+    scrollToSim();
+    start(false);
+  });
+  $('expRewind').addEventListener('click', () => {
+    stop();
+    loadRule('RL');
+    S.ant.run(12000);
+    detectNow();
+    setSpeed(40);
+    draw();
+    scrollToSim();
+    start(true);
+  });
+  document.querySelectorAll('[data-open]').forEach((b) => b.addEventListener('click', () => {
+    stop();
+    loadRule('RL');
+    goTo(Number(b.dataset.open));
+    scrollToSim();
+  }));
+
+  // ---------- step-by-step rule demo ----------
+  const demo = { canvas: $('demo'), ant: new Langton.Ant('RL'), timer: 0, max: 60, view: null, bounds: null };
+  (function () {
+    const t = new Langton.Ant('RL');
+    t.run(demo.max);
+    demo.bounds = { minX: t.minX, maxX: t.maxX, minY: t.minY, maxY: t.maxY };
+  })();
+  const TURN_TEXT = ['', 'vira à direita', 'dá meia-volta', 'vira à esquerda'];
+  function demoDraw() {
+    const dpr = fitCanvas(demo.canvas);
+    demo.view = fitView(demo.canvas, demo.bounds, 1, 60 * dpr);
+    renderBoard(demo.canvas, demo.ant, demo.view);
+    const a = demo.ant, el = $('demoText');
+    if (a.steps === 0) {
+      el.innerHTML = '<b>Passo 0.</b> Tudo branco. A formiga olha para o norte.';
+      return;
+    }
+    // invariant: undoing the last step reveals the color the ant read on it.
+    a.back();
+    const read = a.colorAt(a.x, a.y);
+    a.step();
+    const was = read === 0 ? 'branca' : 'preta';
+    const now = read === 0 ? 'preta' : 'branca';
+    el.innerHTML = `<b>Passo ${a.steps}.</b> A casa era ${was}: a formiga ${TURN_TEXT[a.turns[read]]}, deixa a casa ${now} e anda para o ${DIR_NAMES[a.dir].split(' ')[1]}.`;
+  }
+  function demoStop() {
+    clearInterval(demo.timer); demo.timer = 0;
+    $('demoPlay').setAttribute('aria-pressed', 'false');
+    $('demoPlay').textContent = '▶ Animar';
+  }
+  function demoPlay() {
+    demoStop();
+    $('demoPlay').setAttribute('aria-pressed', 'true');
+    $('demoPlay').textContent = '❚❚ Parar';
+    demo.timer = setInterval(() => {
+      if (demo.ant.steps >= demo.max) demo.ant.reset();
+      else demo.ant.step();
+      demoDraw();
+    }, 650);
+  }
+  $('demoNext').addEventListener('click', () => { demoStop(); if (demo.ant.steps < demo.max) demo.ant.step(); demoDraw(); });
+  $('demoPrev').addEventListener('click', () => { demoStop(); demo.ant.back(); demoDraw(); });
+  $('demoReset').addEventListener('click', () => { demoStop(); demo.ant.reset(); demoDraw(); });
+  $('demoPlay').addEventListener('click', () => (demo.timer ? demoStop() : demoPlay()));
+
+  // ---------- static snapshots and gallery ----------
+  const GALLERY = [
+    { rule: 'RL', name: 'A original', steps: 11000, text: 'Caos até o passo 9.977 e depois a estrada diagonal de período 104.' },
+    { rule: 'RLR', name: 'Caótica', steps: 60000, text: 'Cresce de forma caótica. Não se sabe se algum dia forma uma estrada.' },
+    { rule: 'LLRR', name: 'Simétrica', steps: 19812, text: 'Cresce mantendo simetria: de tempos em tempos o desenho fica perfeitamente espelhado, como no passo 19.812.' },
+    { rule: 'LRRRRRLLR', name: 'Quadrado', steps: 100000, text: 'Preenche um quadrado em volta de si. Com 100 mil passos ele tem 132 × 132 casas.' },
+    { rule: 'RRLLLRLLLRRR', name: 'Triângulo', steps: 100000, text: 'Constrói um triângulo de bordas irregulares que vai crescendo.' },
+    { rule: 'LLRRRLRLRLLR', name: 'Estrada sinuosa', steps: 60000, text: 'Também acaba numa estrada, mas bem mais larga e com um ciclo de 1.968 passos.' },
+  ];
+  const gallery = $('gallery');
+  for (const g of GALLERY) {
+    const card = document.createElement('article');
+    card.className = 'card';
+    card.innerHTML =
+      `<canvas data-rule="${g.rule}" data-steps="${g.steps}" aria-label="Regra ${g.rule} após ${fmt.format(g.steps)} passos"></canvas>` +
+      `<div class="body"><div class="meta"><span class="rule-word">${g.rule}</span><span class="tag num">${fmt.format(g.steps)} passos</span></div>` +
+      `<h3>${g.name}</h3><p>${g.text}</p></div>` +
+      `<div class="actions"><button data-load="${g.rule}">Ver crescer no simulador</button></div>`;
+    gallery.appendChild(card);
+  }
+  gallery.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-load]');
+    if (!b) return;
+    stop();
+    loadRule(b.dataset.load);
+    setSpeed(b.dataset.load === 'RL' ? 20 : 120);
+    draw();
+    scrollToSim();
+    start(false);
+  });
+
+  const snapshots = [];
+  document.querySelectorAll('canvas[data-snapshot], canvas[data-rule]').forEach((c) => {
+    const a = new Langton.Ant(c.dataset.rule || 'RL');
+    a.run(Number(c.dataset.snapshot || c.dataset.steps));
+    snapshots.push({ canvas: c, ant: a });
+  });
+  function drawSnapshots() {
+    for (const s of snapshots) {
+      const dpr = fitCanvas(s.canvas);
+      renderBoard(s.canvas, s.ant, fitView(s.canvas, s.ant, 3, 22 * dpr));
+    }
+  }
+
+  // ---------- theme and size changes ----------
+  function redrawAll() { readTokens(); draw(); demoDraw(); drawSnapshots(); }
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redrawAll);
+  new MutationObserver(redrawAll).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  let resizeQueued = false;
+  new ResizeObserver(() => {
+    if (resizeQueued) return;
+    resizeQueued = true;
+    requestAnimationFrame(() => { resizeQueued = false; draw(); demoDraw(); drawSnapshots(); });
+  }).observe(document.body);
+
+  readTokens();
+  updateSpeed();
+  redrawAll();
+  if (!reduceMotion) { start(false); demoPlay(); }
+})();
+</script>
+</body>
+</html>
